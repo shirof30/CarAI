@@ -9,6 +9,8 @@ import torch
 # Define transformations
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
@@ -24,13 +26,13 @@ test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 # Define the model
 model = models.resnet152(pretrained=True)
 num_ftrs = model.fc.in_features
-model.fc = nn.Linear(num_ftrs, 196) # Adjust the output size to match the number of classes
+model.fc = nn.Linear(num_ftrs, 196)  # Adjust the output size to match the number of classes
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-# Define the loss function and optimizer
+# Define the loss function and optimizer with weight decay regularization
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-5)
 
 # Training loop
 for epoch in range(25):
@@ -44,8 +46,7 @@ for epoch in range(25):
         optimizer.step()
         running_loss += loss.item()
         if i % 100 == 99:
-            print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 100))
+            print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 100))
             running_loss = 0.0
 
 print('Finished Training')

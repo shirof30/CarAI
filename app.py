@@ -1,43 +1,51 @@
-from flask import Flask, request, jsonify
+from flask import Flask, send_file, request, jsonify
+from torchvision import models, transforms
 from PIL import Image
-import torchvision.transforms as transforms
-import torchvision.models as models
 import torch.nn as nn
 import torch
 
 app = Flask(__name__)
 
-def load_model():
-    model = models.resnet152()
-    model.fc = nn.Linear(model.fc.in_features, 196)
-    model.load_state_dict(torch.load('model.pth'))
-    model.eval()
-    return model
+class CarModel:
+    def __init__(self):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = self._load_model()
+        self.transform = self._build_transform()
 
-def transform_image(image):
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-    return transform(image).unsqueeze(0)
+    def _load_model(self):
+        resnet_model = models.resnet152()
+        resnet_model.fc = nn.Linear(resnet_model.fc.in_features, 196)
+        state_dict = torch.load('model.pth')
+        resnet_model.load_state_dict(state_dict)
+        resnet_model.eval()
+        return resnet_model.to(self.device)
 
-model = load_model()
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    def _build_transform(self):
+        return transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+
+    def predict(self, image):
+        img_tensor = self.transform(image).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            output = self.model(img_tensor)
+            prediction = torch.argmax(output).item()
+        return prediction
+
+car_model = CarModel()
 
 @app.route('/predict', methods=['POST'])
-def predict():
-    file = request.files['file']
-    image = Image.open(file.stream).convert('RGB')
-    input_tensor = transform_image(image).to(device)
-    with torch.no_grad():
-        output = model(input_tensor)
-        prediction = torch.argmax(output).item()
-    return jsonify({'prediction': prediction})
+def predict_image():
+    file_data = request.files['file']
+    image_data = Image.open(file_data.stream).convert('RGB')
+    result = car_model.predict(image_data)
+    return jsonify({'prediction': result})
 
 @app.route('/')
-def index():
-    return open('index.html').read()
+def main_page():
+    return send_file('index.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
